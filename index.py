@@ -109,11 +109,32 @@ def calculate_doc_length(term_frequencies):
 # and updates the global dictionary after processing each document in
 # the collection
 def update_dictionary(doc_ID, term_index_table, title_index_table, court, jurisdiction):
+    if CONTENT_INDEX not in dictionary:
+        dictionary[CONTENT_INDEX] = dict()
+
     for term in term_index_table:
-        if term not in dictionary:
-            dictionary[term] = []
+        if term not in dictionary[CONTENT_INDEX]:
+            dictionary[CONTENT_INDEX][term] = []
         postings_element = (doc_ID, term_index_table[term])
-        dictionary[term].append(postings_element)
+        dictionary[CONTENT_INDEX][term].append(postings_element)
+
+
+    if TITLE_INDEX not in dictionary:
+        dictionary[TITLE_INDEX] = dict()
+
+    for term in title_index_table:
+        if term not in dictionary[TITLE_INDEX]:
+            dictionary[TITLE_INDEX][term] = []
+        postings_element = (doc_ID, title_index_table[term])
+        dictionary[TITLE_INDEX][term].append(postings_element)
+
+    if JURISDICTION not in dictionary:
+        dictionary[JURISDICTION] = dict()
+    dictionary[JURISDICTION][doc_ID] = jurisdiction
+
+    if COURT not in dictionary:
+        dictionary[COURT] = dict()
+    dictionary[COURT][doc_ID] = court
 
 def write_to_disk(dictionary_file, postings_file, doc_length_table, collection):
     dict_to_disk = write_post_to_disk(dictionary, postings_file)
