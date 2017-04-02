@@ -29,8 +29,8 @@ def process_documents(file_path, dictionary_file, postings_file):
     for filename in collection:
         (title, content, court, jurisdiction) = parse_xml(file_path, filename)
         (doc_length, term_index_table) = process_content(content)
-        
-        update_dictionary(filename, term_index_table)
+        title_index_table = process_title(title)
+        update_dictionary(filename, term_index_table, title_index_table, court, jurisdiction)
         doc_length_table[filename] = doc_length
     write_to_disk(dictionary_file, postings_file, doc_length_table, collection)
     print('...index is done building')
@@ -59,7 +59,20 @@ def parse_xml(file_path, filename):
     return title, content, court, jurisdiction
 
 def process_title(title):
-    print 'hi'
+    term_index_table = dict()
+    index = 0 
+
+    for line in title:
+        for sent in sent_tokenize(line):
+            for word in word_tokenize(sent):
+                term = normalize(word)
+                if term == empty_string:
+                    continue
+                if term not in term_index_table:
+                    term_index_table[term] = []
+                term_index_table[term].append(index)
+                index += 1
+    return term_index_table
 
 
 # process_content processes the given file and computes a term frequency
@@ -80,6 +93,7 @@ def process_content(content):
                     term_index_table[term] = []
                 term_frequency_table[term] += 1
                 term_index_table[term].append(index)
+                index += 1
     doc_length = calculate_doc_length(term_frequency_table.values())
     return (doc_length, term_index_table)
 
@@ -94,7 +108,7 @@ def calculate_doc_length(term_frequencies):
 # update_dictionary takes the term frequency table as well as the doc id
 # and updates the global dictionary after processing each document in
 # the collection
-def update_dictionary(doc_ID, term_index_table):
+def update_dictionary(doc_ID, term_index_table, title_index_table, court, jurisdiction):
     for term in term_index_table:
         if term not in dictionary:
             dictionary[term] = []
