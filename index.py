@@ -7,23 +7,50 @@ import re
 from node import Node
 import json
 import pickle
+import xml.etree.ElementTree as ET
 from utility import *
 
 # Builds index for all documents in directory-of-documents and
 # writes the dictionary into dictionary-file and the postings into postings-file.
 
+# HashMap<String, HashMap<String, Objects>>
 dictionary = dict()
 
 # Builds index for all documents in file_path.
 def process_documents(file_path, dictionary_file, postings_file):
     print('building index...')
     all_files = filter(lambda filename: filename != ".DS_Store", os.listdir(file_path))
-    collection = list(map(int, all_files))
+    collection = []
+    for case in all_files:
+        collection.append(case[:-4])
     collection.sort()
     doc_length_table = dict()
 
     for filename in collection:
-        new_file_path = file_path + str(filename)
+        new_file_path = file_path + str(filename) + '.xml'
+        xmldoc = ET.parse(new_file_path)
+        nodes = xmldoc.findall('str')
+
+        for node in nodes:
+            attribute = node.attrib['name']
+            if attribute == 'title':
+                title = node.text
+                print title
+            elif attribute == 'content':
+                content = node.text
+                print 'cont'
+            elif attribute == 'court':
+                court = node.text
+                print court
+        
+        arr = xmldoc.findall('arr')
+
+        for node in arr:
+            attribute = node.attrib['name']
+            if attribute == 'jurisdiction':
+                jurisdiction = node.findall("str")[0].text
+                print jurisdiction
+
         (term_frequency_table, doc_length) = process_document(new_file_path)
         update_dictionary(term_frequency_table, filename)
         doc_length_table[filename] = doc_length
@@ -91,7 +118,7 @@ def printDict(dictionary):
     for key in dictionary:
         k = key.term + ", " + str(key.frequency)
         print (k, dictionary[key])
-
+'''
 def usage():
     print ("usage: " + sys.argv[0] + " -i directory-of-documents -d dictionary-file -p postings-file")
 
@@ -115,3 +142,5 @@ if directory_of_documents == None or dictionary_file == None or postings_file ==
     sys.exit(2)
 
 process_documents(directory_of_documents, dictionary_file, postings_file)
+'''
+process_documents("test/", "dict", "post")
