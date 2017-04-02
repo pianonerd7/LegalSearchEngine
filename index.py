@@ -40,6 +40,7 @@ def parse_xml(file_path, filename):
     new_file_path = file_path + str(filename) + '.xml'
     xmldoc = ET.parse(new_file_path)
     nodes = xmldoc.findall('str')
+    title = content = court = jurisdiction = ''
 
     for node in nodes:
         attribute = node.attrib['name']
@@ -56,22 +57,21 @@ def parse_xml(file_path, filename):
         if attribute == 'jurisdiction':
             jurisdiction = node.findall("str")[0].text
 
-    return title, content, court, jurisdiction
+    return title, str(content), court, jurisdiction
 
 def process_title(title):
     term_index_table = dict()
     index = 0 
 
-    for line in title:
-        for sent in sent_tokenize(line):
-            for word in word_tokenize(sent):
-                term = normalize(word)
-                if term == empty_string:
-                    continue
-                if term not in term_index_table:
-                    term_index_table[term] = []
-                term_index_table[term].append(index)
-                index += 1
+    for sent in sent_tokenize(title):
+        for word in word_tokenize(sent):
+            term = normalize(word)
+            if term == empty_string:
+                continue
+            if term not in term_index_table:
+                term_index_table[term] = []
+            term_index_table[term].append(index)
+            index += 1
     return term_index_table
 
 
@@ -82,18 +82,18 @@ def process_content(content):
     term_index_table = dict()
     index = 0
     
-    for line in content:
-        for sent in sent_tokenize(line):
-            for word in word_tokenize(sent):
-                term = normalize(word)
-                if term == empty_string:
-                    continue
-                if term not in term_frequency_table:
-                    term_frequency_table[term] = 0
-                    term_index_table[term] = []
-                term_frequency_table[term] += 1
-                term_index_table[term].append(index)
-                index += 1
+    #for line in content:
+    for sent in sent_tokenize(content):
+        for word in word_tokenize(sent):
+            term = normalize(word)
+            if term == empty_string:
+                continue
+            if term not in term_frequency_table:
+                term_frequency_table[term] = 0
+                term_index_table[term] = []
+            term_frequency_table[term] += 1
+            term_index_table[term].append(index)
+            index += 1
     doc_length = calculate_doc_length(term_frequency_table.values())
     return (doc_length, term_index_table)
 
@@ -157,10 +157,6 @@ def write_dict_to_disk(dict_to_disk, doc_length_table, dictionary_file):
         data = [dict_to_disk, doc_length_table]
         pickle.dump(data, df)
 
-def printDict(dictionary):
-    for key in dictionary:
-        k = key.term + ", " + str(key.frequency)
-        print (k, dictionary[key])
 '''
 def usage():
     print ("usage: " + sys.argv[0] + " -i directory-of-documents -d dictionary-file -p postings-file")
