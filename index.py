@@ -145,11 +145,14 @@ def write_to_disk(dictionary_file, postings_file, doc_length_table, collection):
 # The tuple in each posting represents (doc ID, term freq)
 # The keys in dict_to_disk are doc_ids and values are Nodes.
 def write_post_to_disk(dictionary, postings_file):
-    dict_to_disk = dict()
+    dicts_to_disk = dict()
     with open(postings_file, mode="wb") as pf:
-        for key in dictionary:
-            dict_to_disk[key] = Node(key, len(dictionary[key]), pf.tell(), pf.write(pickle.dumps(dictionary[key])))
-    return dict_to_disk
+        for tag in dictionary:
+            dict_to_disk = dict()
+            for key in tag:
+                dict_to_disk[key] = Node(key, len(dictionary[key]), pf.tell(), pf.write(pickle.dumps(dictionary[key])))
+            dicts_to_disk[tag] = dict_to_disk
+    return dicts_to_disk
 
 # Writes dictionary_file and doc_length_table to disk.
 def write_dict_to_disk(dict_to_disk, doc_length_table, dictionary_file):
