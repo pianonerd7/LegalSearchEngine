@@ -15,6 +15,7 @@ CONTENT_INDEX = "CONTENT_INDEX"
 TITLE_INDEX = "TITLE_INDEX"
 JURISDICTION = 'JURISDICTION'
 COURT = 'COURT'
+LANGUAGE = 'english'
 
 # Normalizes the given term.
 def normalize(term):
