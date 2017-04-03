@@ -133,7 +133,6 @@ def update_dictionary(doc_ID, term_index_table, title_index_table, court, jurisd
         postings_element = (doc_ID, term_index_table[term])
         dictionary[CONTENT_INDEX][term].append(postings_element)
 
-
     if TITLE_INDEX not in dictionary:
         dictionary[TITLE_INDEX] = dict()
 
@@ -175,7 +174,6 @@ def write_dict_to_disk(dict_to_disk, doc_length_table, dictionary_file):
         data = [dict_to_disk, doc_length_table]
         pickle.dump(data, df)
 
-'''
 def usage():
     print ("usage: " + sys.argv[0] + " -i directory-of-documents -d dictionary-file -p postings-file")
 
@@ -199,5 +197,3 @@ if directory_of_documents == None or dictionary_file == None or postings_file ==
     sys.exit(2)
 
 process_documents(directory_of_documents, dictionary_file, postings_file)
-'''
-process_documents("test/", "dict", "post")
