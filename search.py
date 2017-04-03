@@ -16,11 +16,11 @@ def read_dictionary_to_memory(dictionary_file_path):
         doc_length_table = data[1]
     return (dictionary, doc_length_table)
 
-def find_posting_in_disk(dictionary, term, postings_file):
-    if term in dictionary:
-        offset = dictionary[term].get_pointer() - postings_file.tell()
+def find_posting_in_disk(dictionary, term, postings_file, tag):
+    if term in dictionary[tag]:
+        offset = dictionary[tag][term].get_pointer() - postings_file.tell()
         postings_file.seek(offset, 1)
-        return pickle.loads(postings_file.read(dictionary[term].length))
+        return pickle.loads(postings_file.read(dictionary[tag][term].length))
     else:
         return []
 
