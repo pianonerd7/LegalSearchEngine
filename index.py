@@ -1,5 +1,6 @@
 #!/usr/bin/python
 from nltk import sent_tokenize, word_tokenize
+from nltk.corpus import stopwords
 import os
 import getopt
 import sys
@@ -9,6 +10,7 @@ import json
 import pickle
 import xml.etree.ElementTree as ET
 from utility import *
+import copy
 
 # Builds index for all documents in directory-of-documents and
 # writes the dictionary into dictionary-file and the postings into postings-file.
@@ -32,9 +34,21 @@ def process_documents(file_path, dictionary_file, postings_file):
         title_index_table = process_title(title)
         update_dictionary(filename, term_index_table, title_index_table, court, jurisdiction)
         doc_length_table[filename] = doc_length
+    remove_stop_words()
     write_to_disk(dictionary_file, postings_file, doc_length_table, collection)
-    print (dictionary)
+    print(dictionary)
     print('...index is done building')
+
+def remove_stop_words():
+    dict_without_stop_words = copy.deepcopy(dictionary)
+
+    for word in dict_without_stop_words[CONTENT_INDEX]:
+        if word in stopwords.words(LANGUAGE):
+            del dictionary[CONTENT_INDEX][word]
+
+    for word in dict_without_stop_words[TITLE_INDEX]:
+        if word in stopwords.words(LANGUAGE):
+            del dictionary[CONTENT_INDEX][word]
 
 # parse_xml reads the xml file and gets the useful tags 
 def parse_xml(file_path, filename):
