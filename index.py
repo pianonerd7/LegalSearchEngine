@@ -33,6 +33,7 @@ def process_documents(file_path, dictionary_file, postings_file):
         update_dictionary(filename, term_index_table, title_index_table, court, jurisdiction)
         doc_length_table[filename] = doc_length
     write_to_disk(dictionary_file, postings_file, doc_length_table, collection)
+    print (dictionary)
     print('...index is done building')
 
 # parse_xml reads the xml file and gets the useful tags 
@@ -149,11 +150,11 @@ def write_post_to_disk(dictionary, postings_file):
     with open(postings_file, mode="wb") as pf:
         for tag in dictionary:
             dict_to_disk = dict()
-            for key in tag:
-                dict_to_disk[key] = Node(key, len(dictionary[key]), pf.tell(), pf.write(pickle.dumps(dictionary[key])))
+            for key in dictionary[tag]:
+                dict_to_disk[key] = Node(key, len(dictionary[tag][key]), pf.tell(), pf.write(pickle.dumps(dictionary[tag][key])))
             dicts_to_disk[tag] = dict_to_disk
     return dicts_to_disk
-
+            
 # Writes dictionary_file and doc_length_table to disk.
 def write_dict_to_disk(dict_to_disk, doc_length_table, dictionary_file):
     with open(dictionary_file, mode="wb") as df:
