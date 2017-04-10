@@ -95,7 +95,7 @@ def process_content(content):
             if term not in stopwords.words(LANGUAGE):
                 term_frequency_table[term] += 1
                 term_index_table[term].append(index)
-            index += 1
+                index += 1
     doc_length = calculate_doc_length(term_frequency_table.values())
     return (doc_length, term_index_table)
 
