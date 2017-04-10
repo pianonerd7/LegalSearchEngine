@@ -32,21 +32,9 @@ def process_documents(file_path, dictionary_file, postings_file):
         title_index_table = process_title(title)
         update_dictionary(filename, term_index_table, title_index_table, court, jurisdiction)
         doc_length_table[filename] = doc_length
-    remove_stop_words()
     write_to_disk(dictionary_file, postings_file, doc_length_table, collection)
     print(dictionary)
     print('...index is done building')
-
-def remove_stop_words():
-    dict_without_stop_words = copy.deepcopy(dictionary)
-
-    for word in dict_without_stop_words[CONTENT_INDEX]:
-        if word in stopwords.words(LANGUAGE):
-            del dictionary[CONTENT_INDEX][word]
-
-    for word in dict_without_stop_words[TITLE_INDEX]:
-        if word in stopwords.words(LANGUAGE):
-            del dictionary[CONTENT_INDEX][word]
 
 # parse_xml reads the xml file and gets the useful tags 
 def parse_xml(file_path, filename):
@@ -101,11 +89,12 @@ def process_content(content):
             term = normalize(word)
             if term == empty_string:
                 continue
-            if term not in term_frequency_table:
+            if term not in term_frequency_table and term not in stopwords.words(LANGUAGE):
                 term_frequency_table[term] = 0
                 term_index_table[term] = []
-            term_frequency_table[term] += 1
-            term_index_table[term].append(index)
+            if term not in stopwords.words(LANGUAGE):
+                term_frequency_table[term] += 1
+                term_index_table[term].append(index)
             index += 1
     doc_length = calculate_doc_length(term_frequency_table.values())
     return (doc_length, term_index_table)
