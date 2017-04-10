@@ -23,12 +23,10 @@ def process_documents(file_path, dictionary_file, postings_file):
     print('building index...')
     all_files = filter(lambda filename: filename != ".DS_Store", os.listdir(file_path))
     collection = []
-    for case in all_files:
-        collection.append(case[:-4])
-    collection.sort()
     doc_length_table = dict()
 
-    for filename in collection:
+    for case in all_files:
+        filename = case[:-4]
         (title, content, court, jurisdiction) = parse_xml(file_path, filename)
         (doc_length, term_index_table) = process_content(content)
         title_index_table = process_title(title)
