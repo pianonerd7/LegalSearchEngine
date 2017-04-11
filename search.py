@@ -53,6 +53,7 @@ def get_synonyms(query):
     for phrase in query:
         new_phrase = dict()
         for word, word_info in phrase.items():
+            new_phrase[word] = word_info
             syn_set = wn.synsets(word)
             synonyms = []
             for syn in syn_set:
