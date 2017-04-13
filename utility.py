@@ -1,4 +1,5 @@
 from nltk import PorterStemmer
+from nltk.corpus import stopwords
 import string
 import math
 
@@ -7,7 +8,6 @@ import math
 K = 10
 empty_string = ''
 COLLECTION_SIZE = "COLLECTION_SIZE"
-stemmer = PorterStemmer()
 # Some punctuations that should not be indexed.
 punctuations = ["''", '..', '--', '``']
 
@@ -17,10 +17,13 @@ JURISDICTION = 'JURISDICTION'
 COURT = 'COURT'
 LANGUAGE = 'english'
 
+stemmer = PorterStemmer()
+stopwords = stopwords.words(LANGUAGE)
+
 # Normalizes the given term.
 def normalize(term):
     term = stemmer.stem(term).casefold()
-    if term in string.punctuation or term in punctuations:
+    if term in string.punctuation or term in punctuations or term in stopwords:
         return empty_string
     return term
 
