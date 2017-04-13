@@ -19,9 +19,8 @@ import datetime
 # HashMap<String, HashMap<String, Objects>>
 dictionary = dict()
 dictionary[CONTENT_INDEX] = dict()
-dictionary[TITLE_INDEX] = dict()
-# dictionary[JURISDICTION] = dict()
 dictionary[COURT] = dict()
+dictionary[TAG] = dict()
 
 # Builds index for all documents in file_path.
 def process_documents(file_path, dictionary_file, postings_file):
@@ -30,14 +29,14 @@ def process_documents(file_path, dictionary_file, postings_file):
     doc_length_table = dict()
     start = datetime.datetime.now()
 
+    all_files = ["2210364.xml", "2209185.xml", "2232474.xml"]
     for case in all_files:
         filename = case[:-4]
-        # (title, content, court, jurisdiction) = parse_xml(file_path, case)
-        (title, content, court) = parse_xml(file_path, case)
+        (content, court, tag) = parse_xml(file_path, case)
+        if content is '':
+            continue
         (doc_length, term_index_table) = process_content(content)
-        title_index_table = process_title(title)
-        # update_dictionary(filename, term_index_table, title_index_table, court, jurisdiction)
-        update_dictionary(filename, term_index_table, title_index_table, court)
+        update_dictionary(filename, term_index_table, court, tag)
         doc_length_table[filename] = doc_length
     write_to_disk(dictionary_file, postings_file, doc_length_table, len(all_files))
     end = datetime.datetime.now()
@@ -49,38 +48,26 @@ def parse_xml(file_path, filename):
     new_file_path = file_path + filename
     xmldoc = ET.parse(new_file_path)
     nodes = xmldoc.findall('str')
-    # title = content = court = jurisdiction = ''
-    title = content = court = ''
+    content = court = ''
+    tag = False
+
+    if nodes is None:
+        return content, court, tag
 
     for node in nodes:
         attribute = node.attrib['name']
-        if attribute == 'title':
-            title = node.text
-        elif attribute == 'content':
+        if attribute == 'content':
             content = node.text
         elif attribute == 'court':
             court = node.text
-
-    '''for node in xmldoc.iterfind('arr[@name="jurisdiction"]'):
-        jurisdiction = node[0].text'''
-
-    # return title, str(content), court, jurisdiction
-    return title, content, court
-
-def process_title(title):
-    term_index_table = dict()
-    index = 0
-
-    for word in word_tokenize(title):
-        term = normalize(word)
-        if term == empty_string:
-            continue
-        if term not in term_index_table:
-            term_index_table[term] = []
-        term_index_table[term].append(index)
-        index += 1
-    return term_index_table
-
+    if court == '':
+        for node in xmldoc.iterfind('arr[@name="jurisdiction"]'):
+            court = node[0].text
+            break
+    for node in xmldoc.iterfind('arr[@name="tag"]'):
+        tag = True
+        break
+    return content, court, tag
 
 # process_content processes the given file and computes a term frequency
 # table for that file and the length of the file.
@@ -114,24 +101,21 @@ def calculate_doc_length(term_frequencies):
 # and updates the global dictionary after processing each document in
 # the collection
 # def update_dictionary(doc_ID, term_index_table, title_index_table, court, jurisdiction):
-def update_dictionary(doc_ID, term_index_table, title_index_table, court):
+def update_dictionary(doc_ID, term_index_table, court, tag):
     for term in term_index_table:
         if term not in dictionary[CONTENT_INDEX]:
             dictionary[CONTENT_INDEX][term] = []
         postings_element = (doc_ID, term_index_table[term])
         dictionary[CONTENT_INDEX][term].append(postings_element)
 
-    for term in title_index_table:
-        if term not in dictionary[TITLE_INDEX]:
-            dictionary[TITLE_INDEX][term] = []
-        postings_element = (doc_ID, title_index_table[term])
-        dictionary[TITLE_INDEX][term].append(postings_element)
-
     # dictionary[JURISDICTION][doc_ID] = jurisdiction
     dictionary[COURT][doc_ID] = court
+    dictionary[TAG][doc_ID] = tag
 
 def write_to_disk(dictionary_file, postings_file, doc_length_table, collection_length):
     dict_to_disk = write_post_to_disk(dictionary, postings_file)
+    with open('1.txt', 'w', encoding='utf8') as dictionary_output:
+        dictionary_output.write(str(dict_to_disk))
     dict_to_disk[COLLECTION_SIZE] = collection_length
     write_dict_to_disk(dict_to_disk, doc_length_table, dictionary_file)
 
@@ -142,9 +126,12 @@ def write_post_to_disk(dictionary, postings_file):
     dicts_to_disk = dict()
     with open(postings_file, mode="wb") as pf:
         for tag in dictionary:
-            dict_to_disk = dict()
-            for key in dictionary[tag]:
-                dict_to_disk[key] = Node(key, len(dictionary[tag][key]), pf.tell(), pf.write(pickle.dumps(dictionary[tag][key])))
+            if tag == CONTENT_INDEX:
+                dict_to_disk = dict()
+                for key in dictionary[tag]:
+                    dict_to_disk[key] = Node(key, len(dictionary[tag][key]), pf.tell(), pf.write(pickle.dumps(dictionary[tag][key])))
+            else:
+                dict_to_disk = dictionary[tag]
             dicts_to_disk[tag] = dict_to_disk
     return dicts_to_disk
 
