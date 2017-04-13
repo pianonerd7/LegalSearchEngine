@@ -22,8 +22,11 @@ stopwords = stopwords.words(LANGUAGE)
 
 # Normalizes the given term.
 def normalize(term):
-    term = stemmer.stem(term).casefold()
-    if term in string.punctuation or term in punctuations or term in stopwords:
+    term = term.casefold()
+    if term in stopwords:
+        return empty_string
+    term = stemmer.stem(term)
+    if term in string.punctuation or term in punctuations:
         return empty_string
     return term
 

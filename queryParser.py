@@ -13,7 +13,7 @@ def query_from_file_to_array(query_file_path):
     query = []
     f1 = open(query_file_path, 'r', encoding = "utf8")
     line = f1.readline()
-    
+
     # print(line)
 
     phrases = [f.group(1) for f in re.finditer('"(.+?)"', line)]
@@ -24,8 +24,10 @@ def query_from_file_to_array(query_file_path):
         words = word_tokenize(phrase)
         pos = 0
         word_dict = dict()
-        words = [stemmer.stem(word) for word in words if len(word) > 1 or (word not in punctuations and word not in string.punctuation)]
         for word in words:
+            word = normalize(word)
+            if word == empty_string:
+                continue
             if word not in word_dict:
                 word_dict[word] = {"position": [], "tf": 0}
 
@@ -33,12 +35,6 @@ def query_from_file_to_array(query_file_path):
             word_dict[word]["tf"] += 1
             pos += 1
 
-        dict_without_stop_words = copy.deepcopy(word_dict)
-
-        for key in dict_without_stop_words.keys():
-            if key in stopwords.words(LANGUAGE):
-                del word_dict[key]
-            
         query.append(word_dict)
 
     # print(query)
@@ -56,9 +52,6 @@ def query_from_file_to_array(query_file_path):
     # print(negative_docs)
     f1.close()
     return query, positive_docs, negative_docs
-
-
-
 
 # def query_from_file_to_array(query_file_path):
 #     queries = []
