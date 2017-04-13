@@ -9,52 +9,41 @@ def parse_query(query_file_path):
     query_arr = query_from_file_to_array(query_file_path)
     return query_arr
 
+# Reason: synonyms for a phrase, a stemmed term and a not-stemmed term is different.
+# To make sure get all synonyms, return the three forms here.
 def query_from_file_to_array(query_file_path):
     notstemmed_query = []
     query = []
     f1 = open(query_file_path, 'r', encoding = "utf8")
     line = f1.readline()
-
-    # print(line)
-
     phrases = [f.group(1) for f in re.finditer('"(.+?)"', line)]
-    # print(phrases)
 
     for phrase in phrases:
-        words = word_tokenize(phrase)
-        pos = 0
-        notstemmed_word_dict = dict()
-        word_dict = dict()
-        for word in words:
-            if check_stopwords(word):
-                continue
-            stemmed_word = stem_term(word)
-            if stemmed_word != word:
-                add_to_dict(word, pos, notstemmed_word_dict)
-            if stemmed_word == empty_string:
-                continue
-            add_to_dict(stemmed_word, pos, word_dict)
-            pos += 1
-
+        notstemmed_word_dict, word_dict = parse_phrase(phrase)
         notstemmed_query.append(notstemmed_word_dict)
         query.append(word_dict)
 
-    # print(query)
-    '''positive_docs = []
-    negative_docs = []
-
-    for line in f1:
-        tokens = line.split()
-        if tokens[0] == '+':
-            positive_docs.append(int(tokens[1]))
-        else:
-            negative_docs.append(int(tokens[1]))
-
-    # print(positive_docs)
-    # print(negative_docs) '''
     f1.close()
     return phrases, query, notstemmed_query
 
+def parse_phrase(phrase):
+    words = word_tokenize(phrase)
+    pos = 0
+    notstemmed_word_dict = dict()
+    word_dict = dict()
+    for word in words:
+        if check_stopwords(word):
+            continue
+        stemmed_word = stem_term(word)
+        if stemmed_word != word:
+            add_to_dict(word, pos, notstemmed_word_dict)
+        if stemmed_word == empty_string:
+            continue
+        add_to_dict(stemmed_word, pos, word_dict)
+        pos += 1
+    return notstemmed_word_dict, word_dict
+
+# Generate a new phrasal query from those given words.
 def get_new_phrasal_query(words):
     pos = 0
     word_dict = dict()

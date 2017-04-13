@@ -6,11 +6,9 @@ import getopt
 import sys
 import re
 from node import Node
-import json
 import pickle
 import xml.etree.ElementTree as ET
 from utility import *
-import copy
 import datetime
 
 # Builds index for all documents in directory-of-documents and
@@ -29,15 +27,14 @@ def process_documents(file_path, dictionary_file, postings_file):
     doc_length_table = dict()
     start = datetime.datetime.now()
 
-    all_files = ["2210364.xml", "2209185.xml", "2232474.xml"]
     for case in all_files:
         filename = case[:-4]
         (content, court, tag) = parse_xml(file_path, case)
-        if content is '':
-            continue
         (doc_length, term_index_table) = process_content(content)
         update_dictionary(filename, term_index_table, court, tag)
         doc_length_table[filename] = doc_length
+        content.clear()
+        term_index_table.clear()
     write_to_disk(dictionary_file, postings_file, doc_length_table, len(all_files))
     end = datetime.datetime.now()
     print(str(end - start))
@@ -46,27 +43,26 @@ def process_documents(file_path, dictionary_file, postings_file):
 # parse_xml reads the xml file and gets the useful tags
 def parse_xml(file_path, filename):
     new_file_path = file_path + filename
-    xmldoc = ET.parse(new_file_path)
-    nodes = xmldoc.findall('str')
     content = court = ''
     tag = False
 
-    if nodes is None:
-        return content, court, tag
-
-    for node in nodes:
-        attribute = node.attrib['name']
-        if attribute == 'content':
-            content = node.text
-        elif attribute == 'court':
-            court = node.text
-    if court == '':
-        for node in xmldoc.iterfind('arr[@name="jurisdiction"]'):
-            court = node[0].text
-            break
-    for node in xmldoc.iterfind('arr[@name="tag"]'):
-        tag = True
-        break
+    parser = ET.iterparse(new_file_path)
+    for event, elem in parser:
+        if elem.tag == 'str':
+            attribute = elem.get('name', "")
+            if attribute == 'content':
+                content = elem.text
+            elif attribute == 'court':
+                court = elem.text
+        elif elem.tag == 'arr':
+            attribute = elem.attrib['name']
+            if court == '' and attribute == 'jurisdiction':
+                court = elem[0].text
+            elif attribute == 'tag':
+                tag = True
+                elem.clear()
+                continue
+        elem.clear()
     return content, court, tag
 
 # process_content processes the given file and computes a term frequency

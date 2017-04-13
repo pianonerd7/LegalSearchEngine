@@ -32,19 +32,19 @@ def process_queries(dictionary_file, postings_file_path, query_file, output_file
     phrases, query, notstemmed_query = parse_query(query_file)
     result_round_1 = get_query_result(query, dictionary, doc_length_table,
         postings_file_path, True)
-    new_phrase_query, new_word_query = get_synonyms_for_query(phrases, query, notstemmed_query)
-    update_score_by_query_expansion(result_round_1, new_phrase_query, new_word_query, dictionary, doc_length_table, postings_file_path)
-
+    update_score_by_query_expansion(result_round_1, phrases, query, notstemmed_query, dictionary, doc_length_table, postings_file_path)
     normalized_score = get_normalized_score(result_round_1, doc_length_table)
     update_score_by_fields(normalized_score, dictionary)
     final_result = sorted(normalized_score.items(), key=itemgetter(1), reverse=True)
-    print(final_result)
-    # write_to_output(results, output_file_of_results)
+    write_to_output(final_result, output_file_of_results)
 
-def update_score_by_query_expansion(result, new_phrase_query, new_word_query, dictionary, doc_length_table, postings_file_path):
+def update_score_by_query_expansion(result, phrases, query, notstemmed_query, dictionary, doc_length_table, postings_file_path):
+    new_phrase_query = get_synonyms_for_phrase(phrases)
     for phrase in new_phrase_query[PHRASE]:
         update_query_result_for_synonyms(result, phrase, 0.3, True, dictionary, doc_length_table, postings_file_path)
     update_query_result_for_synonyms(result, new_phrase_query[WORD], 0.3, False, dictionary, doc_length_table, postings_file_path)
+
+    new_word_query = get_synonyms_for_query(query, notstemmed_query)
     for phrase in new_word_query[PHRASE]:
          update_query_result_for_synonyms(result, phrase, 0.1, True, dictionary, doc_length_table, postings_file_path)
     update_query_result_for_synonyms(result, new_word_query[WORD], 0.1, False, dictionary, doc_length_table, postings_file_path)
@@ -73,13 +73,12 @@ def update_score_by_fields(normalized_score, dictionary):
         if dictionary[TAG][result]:
             normalized_score[result] *= 1.2
 
-# Returns the synonyms of a query.
-def get_synonyms_for_query(phrases, query, notstemmed_query):
+def get_synonyms_for_phrase(phrases):
     default_word_info = {'tf': 1, 'pos': [0]}
     new_phrase_query = {PHRASE: [], WORD: dict()}
     for phrase in phrases:
         phrase = phrase.replace(space, underscore)
-        word_synonyms, phrase_synonym = get_synonyms_for_word(phrase)
+        word_synonyms, phrase_synonym = get_synonyms(phrase)
         for synonym in word_synonyms:
             if synonym in new_phrase_query[WORD]:
                 word_info = new_phrase_query[WORD][synonym]
@@ -87,37 +86,34 @@ def get_synonyms_for_query(phrases, query, notstemmed_query):
             else:
                 word_info = default_word_info
             new_phrase_query[WORD][synonym] = word_info
-        for new_phrase in phrase_synonym:
-            if new_phrase in new_phrase_query[PHRASE]:
+        for synonym in phrase_synonym:
+            if synonym  in new_phrase_query[PHRASE]:
                 continue
-            new_phrase_query[PHRASE].append(new_phrase)
+            new_phrase_query[PHRASE].append(synonym)
+    return new_phrase_query
 
+def get_synonyms_for_query(query, notstemmed_query):
     new_word_query = {PHRASE: [], WORD: dict()}
     for index, phrase in enumerate(query):
         for word, word_info in phrase.items():
-            word_synonyms, phrase_synonym = get_synonyms_for_word(word)
-            for synonym in word_synonyms:
-                if synonym in new_word_query[WORD]:
-                    word_info['tf'] += new_word_query[WORD][synonym]['tf']
-                new_word_query[WORD][synonym] = word_info
-            for new_phrase in phrase_synonym:
-                if new_phrase in new_word_query[PHRASE]:
-                    continue
-                new_word_query[PHRASE].append(new_phrase)
+            get_synonyms_for_word(word, word_info, new_word_query)
         notstemmed_phrase = notstemmed_query[index]
         for word, word_info in notstemmed_phrase.items():
-            word_synonyms, phrase_synonym = get_synonyms_for_word(word)
-            for synonym in word_synonyms:
-                if synonym in new_word_query[WORD]:
-                    word_info['tf'] +=  new_word_query[WORD][synonym]['tf']
-                new_word_query[WORD][synonym] = word_info
-            for new_phrase in phrase_synonym:
-                if new_phrase in new_word_query[PHRASE]:
-                    continue
-                new_word_query[PHRASE].append(new_phrase)
-    return new_phrase_query, new_word_query
+            get_synonyms_for_word(word, word_info, new_word_query)
+    return new_word_query
 
-def get_synonyms_for_word(word):
+def get_synonyms_for_word(word, word_info, new_word_query):
+    word_synonyms, phrase_synonym = get_synonyms(word)
+    for synonym in word_synonyms:
+        if synonym in new_word_query[WORD]:
+            word_info['tf'] += new_word_query[WORD][synonym]['tf']
+        new_word_query[WORD][synonym] = word_info
+    for new_phrase in phrase_synonym:
+        if new_phrase in new_word_query[PHRASE]:
+            continue
+        new_word_query[PHRASE].append(new_phrase)
+
+def get_synonyms(word):
     word_synonyms = []
     phrase_synonym = []
     syn_set = wn.synsets(word)
@@ -126,7 +122,7 @@ def get_synonyms_for_word(word):
             if lemma in word_synonyms or lemma == word:
                 continue
             if underscore not in lemma:
-                lemma = normalize(lemma)
+                lemma = stem_term(lemma)
                 if lemma == empty_string:
                     continue
                 word_synonyms.append(lemma)
@@ -185,6 +181,7 @@ def calculate_cosine_score(dictionary, doc_length_table, postings_file, phrase,
         postings = find_posting_in_disk(dictionary, query_term, postings_file, tag)
         postings_cache[query_term] = postings
         update_score_dictionary(postings, score_dictionary, query_weight, result_round_1)
+        postings.clear()
 
     if remove_incomplete:
         score_dictionary = remove_unpositional_docs(score_dictionary, phrase, postings_cache)
@@ -293,20 +290,18 @@ def update_score_dictionary(postings, score_dictionary, query_weight, result_rou
 
         score_dictionary[doc_id] += query_weight * doc_weight
 
-# Normalizes the score for each document and returns the top K components.
+# Normalizes the score for each document.
 def get_normalized_score(score_dictionary, doc_length_table):
-    # score_heap is a min-heap. So we need to negate score to simulate a 'max-heap'.
     for (doc_id, score) in score_dictionary.items():
         score_dictionary[doc_id] = score / doc_length_table[doc_id]
     return score_dictionary
 
 def write_to_output(results, output_file_of_results):
     with open(output_file_of_results, mode="w") as of:
-        for result in results:
-            of.write(format_result(result) + "\n")
+        of.write(format_results(results))
 
-def format_result(result):
-    return ' '.join(list(map(str, result)))
+def format_results(results):
+    return ' '.join(list(map(str, [result[0] for result in results])))
 
 '''
 cosine_score:
