@@ -27,33 +27,103 @@ def find_posting_in_disk(dictionary, term, postings_file, tag):
 
 # Runs the query in query_file on dictionary_file and postings_file_path
 # and write results into disk.
+# The score for a document is determined by four aspects:
+# tf-idf of the content,
+# query expansion,
+# distance between every two query phrases in the content of a document,
+# and fields info.
 def process_queries(dictionary_file, postings_file_path, query_file, output_file_of_results):
     (dictionary, doc_length_table) = read_dictionary_to_memory(dictionary_file)
     phrases, query, notstemmed_query = parse_query(query_file)
-    result_round_1 = get_query_result(query, dictionary, doc_length_table,
+
+    (score_dict, position_list_arr) = get_query_result(query, dictionary, doc_length_table,
         postings_file_path, True, True)
-    update_score_by_query_expansion(result_round_1, phrases, query, notstemmed_query, dictionary, doc_length_table, postings_file_path)
-    normalized_score = get_normalized_score(result_round_1, doc_length_table)
+    update_score_by_query_expansion(score_dict, phrases, notstemmed_query, dictionary, doc_length_table, postings_file_path)
+    normalized_score = get_normalized_score(score_dict, doc_length_table)
+    update_score_by_position(normalized_score, position_list_arr)
     update_score_by_fields(normalized_score, dictionary)
     final_result = sorted(normalized_score.items(), key=itemgetter(1), reverse=True)
+
     write_to_output(final_result, output_file_of_results)
 
-def update_score_by_query_expansion(result, phrases, query, notstemmed_query, dictionary, doc_length_table, postings_file_path):
+# Calculates the results of each phrase in the passed query and intersects them to get the result
+# of the query.
+def get_query_result(query, dictionary, doc_length_table, postings_file_path,
+    remove_incomplete, check_position, previous_result = None):
+    score_dict = None
+    position_list_arr = []
+    with open(postings_file_path, 'rb') as postings_file:
+        for phrase in query:
+            (score, position_list) = calculate_cosine_score(dictionary, doc_length_table, postings_file,
+                phrase, remove_incomplete, CONTENT_INDEX, previous_result)
+            if score_dict is None:
+                score_dict = score
+            else:
+                score_dict = intersect_dicts(score_dict, score)
+            if check_position:
+                position_list_arr.append(position_list)
+
+    if check_position:
+        return score_dict, position_list_arr
+
+    return score_dict
+
+# To get synonyms of the original query, here we are finding the synonyms of
+# the original query phrases and synonyms for those terms appeared in the
+# not-stemmed query, by using wordnet.
+# It is necessary to do so to ensure to get correct synonyms, because the synonyms
+# of a word will depends on its form.
+# Synonyms returned by wordnet has two forms: words and phrases.
+# For a phrase returned by wordnet, we need to do phrasal queries.
+# While for a term, we just consider them as "OR" relations, and perform
+# the standard tf-idf search.
+# Therefore, there are four difference cases in total.
+def update_score_by_query_expansion(result, phrases, notstemmed_query, dictionary, doc_length_table, postings_file_path):
     new_phrase_query = get_synonyms_for_phrase(phrases)
     for phrase in new_phrase_query[PHRASE]:
-        update_query_result_for_synonyms(result, phrase, 0.1, True, dictionary, doc_length_table, postings_file_path)
-    update_query_result_for_synonyms(result, new_phrase_query[WORD], 0.1, False, dictionary, doc_length_table, postings_file_path)
+        update_query_result_for_synonyms(result, phrase, synonyms_phrase_weight, True, dictionary, doc_length_table, postings_file_path)
+    update_query_result_for_synonyms(result, new_phrase_query[WORD], synonyms_phrase_weight, False, dictionary, doc_length_table, postings_file_path)
 
-    new_word_query = get_synonyms_for_query(query, notstemmed_query)
+    new_word_query = get_synonyms_for_query(notstemmed_query)
     for phrase in new_word_query[PHRASE]:
-         update_query_result_for_synonyms(result, phrase, 0.05, True, dictionary, doc_length_table, postings_file_path)
-    update_query_result_for_synonyms(result, new_word_query[WORD], 0.05, False, dictionary, doc_length_table, postings_file_path)
+         update_query_result_for_synonyms(result, phrase, synonyms_word_weight, True, dictionary, doc_length_table, postings_file_path)
+    update_query_result_for_synonyms(result, new_word_query[WORD], synonyms_word_weight, False, dictionary, doc_length_table, postings_file_path)
 
+# Adds score of querying those synonyms multplied by weight to the previous_result.
 def update_query_result_for_synonyms(previous_result, synonyms, weight, remove_incomplete, dictionary, doc_length_table, postings_file_path):
     synonyms_result = get_query_result([synonyms], dictionary, doc_length_table, postings_file_path, remove_incomplete, False, previous_result)
     for result in synonyms_result:
         previous_result[result] += synonyms_result[result] * weight
 
+# Normalizes the score for each document.
+def get_normalized_score(score_dictionary, doc_length_table):
+    for (doc_id, score) in score_dictionary.items():
+        score_dictionary[doc_id] = score / doc_length_table[doc_id]
+    return score_dictionary
+
+# Updates score by the distance between query terms.
+# If query terms are closed to each other, it is more likely that a document
+# is relevant.
+# Here we set two thresholds: distance within 10 words (same sentence),
+# and distance within 50 words (same paragraph).
+def update_score_by_position(score_dict, position_list_arr):
+    for i in range(0, len(position_list_arr) - 1):
+        for j in range(i + 1, len(position_list_arr)):
+            answer_50 = get_positional_intersect(position_list_arr[i], position_list_arr[j], 50)
+            answer_10 = get_positional_intersect(position_list_arr[i], position_list_arr[j], 10)
+            for doc in answer_50:
+                if doc in score_dict and doc in answer_10:
+                    score_dict[doc] *= 1.5
+                elif doc in score_dict:
+                    score_dict[doc] *= 1.2
+
+# Updates score by those fields in the document (court and tag).
+# We rank the weight for courts: SGCA > SGHC > SG** (any case in SG) > **CA
+# (any case happened in the court of appeal of a country) > other
+# For example, we suppose that a document is more likely to be relevant if
+# the court is SGCA.
+# Alo, as stated in the instruction for the assignment, documents with tagged
+# are considered as landmark cases and are morelikly to be relevant.
 def update_score_by_fields(normalized_score, dictionary):
     for result in normalized_score:
         if result not in dictionary[COURT]:
@@ -61,30 +131,33 @@ def update_score_by_fields(normalized_score, dictionary):
         court = dictionary[COURT][result]
         if court == None:
             continue
-        if court in courts_weight:
-            normalized_score[result] += courts_weight[court]
+        if court in courts_score:
+            normalized_score[result] += courts_score[court]
         elif len(court) >= 2:
-            prefix = court[:2]
-            if prefix in courts_weight:
-                normalized_score[result] += courts_weight[prefix]
-            subfix = court[-2:]
-            if subfix in courts_weight:
-                normalized_score[result] += courts_weight[subfix]
+            prefix = court[:2] # for exanple, `SG`
+            if prefix in courts_score:
+                normalized_score[result] += courts_score[prefix]
+            subfix = court[-2:]  # for example, `CA`
+            if subfix in courts_score:
+                normalized_score[result] += courts_score[subfix]
         if result not in dictionary[TAG]:
             continue
         if dictionary[TAG][result]:
-            normalized_score[result] += 0.01
+            normalized_score[result] += tag_score
 
+# Retunrs synonyms of phrases in a query.
 def get_synonyms_for_phrase(phrases):
-    default_word_info = {'tf': 1, 'pos': [0]}
+    default_word_info = {tf: 1, POSITION: [0]}
     new_phrase_query = {PHRASE: [], WORD: dict()}
     for phrase in phrases:
+        if ' ' not in phrase:
+            continue
         phrase = phrase.replace(space, underscore)
         word_synonyms, phrase_synonym = get_synonyms(phrase)
         for synonym in word_synonyms:
             if synonym in new_phrase_query[WORD]:
                 word_info = new_phrase_query[WORD][synonym]
-                word_info['tf'] += 1
+                word_info[tf] += 1
             else:
                 word_info = default_word_info
             new_phrase_query[WORD][synonym] = word_info
@@ -94,21 +167,20 @@ def get_synonyms_for_phrase(phrases):
             new_phrase_query[PHRASE].append(synonym)
     return new_phrase_query
 
-def get_synonyms_for_query(query, notstemmed_query):
+# Returns synonyms of terms in a query.
+def get_synonyms_for_query(notstemmed_query):
     new_word_query = {PHRASE: [], WORD: dict()}
-    for index, phrase in enumerate(query):
+    for phrase in notstemmed_query:
         for word, word_info in phrase.items():
-            get_synonyms_for_word(word, word_info, new_word_query)
-        notstemmed_phrase = notstemmed_query[index]
-        for word, word_info in notstemmed_phrase.items():
             get_synonyms_for_word(word, word_info, new_word_query)
     return new_word_query
 
+# Returns synonyms of the word.
 def get_synonyms_for_word(word, word_info, new_word_query):
     word_synonyms, phrase_synonym = get_synonyms(word)
     for synonym in word_synonyms:
         if synonym in new_word_query[WORD]:
-            word_info['tf'] += new_word_query[WORD][synonym]['tf']
+            word_info[tf] += new_word_query[WORD][synonym][tf]
         new_word_query[WORD][synonym] = word_info
     for new_phrase in phrase_synonym:
         if new_phrase in new_word_query[PHRASE]:
@@ -133,53 +205,13 @@ def get_synonyms(word):
                 phrase_synonym.append(get_new_phrasal_query(words))
     return word_synonyms, phrase_synonym
 
-# Calculates the results of each phrase in the passed query and intersects them to get the result
-# of the query.
-def get_query_result(query, dictionary, doc_length_table, postings_file_path,
-    remove_incomplete, check_position, result_round_1 = None):
-    score_dict = None
-    position_list_arr = []
-    with open(postings_file_path, 'rb') as postings_file:
-        for phrase in query:
-            (score, position_list) = calculate_cosine_score(dictionary, doc_length_table, postings_file,
-                phrase, remove_incomplete, CONTENT_INDEX, result_round_1)
-            if score_dict is None:
-                score_dict = score
-            else:
-                score_dict = intersect_score_dicts([score_dict, score])
-            if check_position:
-                position_list_arr.append(position_list)
-
-    #AND the phrases
-    if len(query) > 1:
-        if check_position:
-            update_score_by_position(score_dict, position_list_arr)
-
-    return score_dict
-
-def update_score_by_position(score_dict, position_list_arr):
-    for i in range(0, len(position_list_arr) - 1):
-        for j in range(i + 1, len(position_list_arr)):
-            answer_50 = get_positional_intersect(position_list_arr[i], position_list_arr[j], 50)
-            answer_10 = get_positional_intersect(position_list_arr[i], position_list_arr[j], 10)
-            for doc in answer_50:
-                if doc in score_dict and doc in answer_10:
-                    score_dict[doc] *= 1.5
-                elif doc in score_dict:
-                    score_dict[doc] *= 1.2
-
 # Intersects and returns the score dictionaries.
-def intersect_score_dicts(score_dict_arr):
-    if len(score_dict_arr) == 0:
-        return score_dict_arr
-    dict2 = score_dict_arr[0]
-    for i in range(1, len(score_dict_arr)):
-        dict1 = score_dict_arr[i]
-        for key, value in list(dict2.items()):
-            if key not in dict1.keys():
-                del dict2[key]
+def intersect_dicts(dict1, dict2):
+    for key, value in list(dict1.items()):
+        if key not in dict2.keys():
+            del dict1[key]
 
-    return dict2
+    return dict1
 
 # Calculates the cosine score based on the algorithm described in lecture slides.
 def calculate_cosine_score(dictionary, doc_length_table, postings_file, phrase,
@@ -213,7 +245,7 @@ def remove_unpositional_docs(score_dictionary, phrase, postings_cache):
 
     word_pos_arr = []
     for word in phrase.items():
-        for position in word[1]["position"]:
+        for position in word[1][POSITION]:
             word_pos_arr.append((word[0], position))
     word_pos_arr.sort(key=itemgetter(1))
 
@@ -312,75 +344,12 @@ def update_score_dictionary(postings, score_dictionary, query_weight, result_rou
 
         score_dictionary[doc_id] += query_weight * doc_weight
 
-# Normalizes the score for each document.
-def get_normalized_score(score_dictionary, doc_length_table):
-    for (doc_id, score) in score_dictionary.items():
-        score_dictionary[doc_id] = score / doc_length_table[doc_id]
-    return score_dictionary
-
 def write_to_output(results, output_file_of_results):
     with open(output_file_of_results, mode="w") as of:
         of.write(format_results(results))
 
 def format_results(results):
     return ' '.join(list(map(str, [result[0] for result in results])))
-
-'''
-cosine_score:
-initialize a score_dictionary to store the score of each document
-// Calculate score:
-for each term t in query frequency table:
-    fetch postings list for t
-    calculate its weight (tf_idf)
-    for each document in the postings:
-        calculate its weight (log_tf since df = 1)
-        update the score of the document in score_dictionary
-        (score_dictionary[document] += weight of t * weight of the document
-// Normalization:
-for each document that appear in score_dictionary:
-    normalized score = score[document] / length_of_document <- get from doc_length_table
-    update score
-// Rank:
-Find teh highest 10 scores in the score_dictionary
-
-Question: Should the length of document be the length of the log_tf vector?
-
-
-Document
-
-log_tf
-get postings for every term in the query. list<postings>
-get all docs --> list<docs>
-            doc1            doc2            doc3            ...
-query term  1 + log(tf)     1 + log(tf)     1 + log(tf)
-query term  1 + log(tf)     1 + log(tf)     1 + log(tf)
-dict<query term, dict<doc, log_tf>>
-
-df
-1
-
-tf*idf = log_tf (since it's just tf*idf * 1)
-
-cos_normalization
-
-
-Query
-
-log_tf
-tf table for every word in the query, 1 + log(tf)
-dict<term, 1+log(tf)>
-
-idf_df
-get the term object from dictionary and get df
-            idf
-query term  log(n/df)
-query term  log(n/df)
-
-dict<query term, idf>
-
-cos_normalization
-
-'''
 
 def usage():
     print ("usage: " + sys.argv[0] + " -d dictionary-file -p postings-file -q query-file -o output-file-of-results")

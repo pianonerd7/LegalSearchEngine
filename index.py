@@ -16,6 +16,8 @@ import datetime
 
 # HashMap<String, HashMap<String, Objects>>
 dictionary = dict()
+# Preinitialize those dictionaries to same indexing time, by avoiding checking whether
+# CONTENT_INDEX / COURT / TAG are in the dictionary.
 dictionary[CONTENT_INDEX] = dict()
 dictionary[COURT] = dict()
 dictionary[TAG] = dict()
@@ -23,14 +25,11 @@ dictionary[TAG] = dict()
 # Builds index for all documents in file_path.
 def process_documents(file_path, dictionary_file, postings_file):
     print('building index...')
-    all_files = [filename for filename in os.listdir(file_path) if filename != ".DS_Store"]
-    collection = []
-    for case in all_files:
-        collection.append(case[:-4])
-    collection.sort()
-    doc_length_table = dict()
     start = datetime.datetime.now()
 
+    collection = [int(filename[:-len(xml)]) for filename in os.listdir(file_path) if filename != ".DS_Store"]
+    collection.sort()
+    doc_length_table = dict()
     for filename in collection:
         (content, court, tag) = parse_xml(file_path, filename)
         (doc_length, term_index_table) = process_content(content)
@@ -46,10 +45,15 @@ def process_documents(file_path, dictionary_file, postings_file):
 def parse_xml(file_path, filename):
     new_file_path = file_path + str(filename) + xml
     content = court = ''
-    tag = False
+    tag = False # tag is a boolean attribute to indicate whether the document has tags
 
-    parser = ET.iterparse(new_file_path)
-    for event, elem in parser:
+    parser = ET.iterparse(new_file_path, events=("start", "end"))
+    nodes = iter(parser)
+    event, root = next(nodes)
+
+    for event, elem in nodes:
+        if event != 'end':
+            continue
         if elem.tag == 'str':
             attribute = elem.get('name', "")
             if attribute == 'content':
@@ -59,16 +63,17 @@ def parse_xml(file_path, filename):
         elif elem.tag == 'arr':
             attribute = elem.attrib['name']
             if court == '' and attribute == 'jurisdiction':
+                 # If the document does not contain `court`, we store jurisdiction instead.
                 court = elem[0].text
             elif attribute == 'tag':
                 tag = True
-                elem.clear()
-                continue
-        elem.clear()
+                root.clear()
+                break
+        root.clear()
     return content, court, tag
 
-# process_content processes the given file and computes a term frequency
-# table for that file and the length of the file.
+# process_content processes the content of given file and computes a term positional index
+# table for the content and the length of the content.
 def process_content(content):
     term_frequency_table = dict()
     term_index_table = dict()
@@ -95,10 +100,30 @@ def calculate_doc_length(term_frequencies):
         doc_length += log_tf * log_tf
     return math.sqrt(doc_length)
 
-# update_dictionary takes the term frequency table as well as the doc id
+# process_title processes the content of given file and computes a term frequency
+# table for the tile.
+# However, based on our observation, title does not provide much help for the retrieval of
+# documents, and will take some title to index it. Therefore, we decide to remove if
+# from the production code.
+'''
+def process_title(title):
+    term_index_table = dict()
+    index = 0
+
+    for word in word_tokenize(title):
+        term = normalize(word)
+        if term == empty_string:
+            continue
+        if term not in term_index_table:
+            term_index_table[term] = []
+        term_index_table[term].append(index)
+        index += 1
+    return term_index_table
+'''
+
+# update_dictionary takes the doc id, term positional index table, court and tag info
 # and updates the global dictionary after processing each document in
 # the collection
-# def update_dictionary(doc_ID, term_index_table, title_index_table, court, jurisdiction):
 def update_dictionary(doc_ID, term_index_table, court, tag):
     for term in term_index_table:
         if term not in dictionary[CONTENT_INDEX]:
@@ -111,14 +136,18 @@ def update_dictionary(doc_ID, term_index_table, court, tag):
 
 def write_to_disk(dictionary_file, postings_file, doc_length_table, collection_length):
     dict_to_disk = write_post_to_disk(dictionary, postings_file)
-    with open('1.txt', 'w', encoding='utf8') as dictionary_output:
-        dictionary_output.write(str(dict_to_disk))
     dict_to_disk[COLLECTION_SIZE] = collection_length
     write_dict_to_disk(dict_to_disk, doc_length_table, dictionary_file)
 
 # Writes postings to disk and gets dict_to_disk.
-# The tuple in each posting represents (doc ID, term freq)
-# The keys in dict_to_disk are doc_ids and values are Nodes.
+# dict_to_disk has three keys: CONTENT_INDEX, COURT and TAG.
+# Values for those keys store information about those corresponding parts.
+# dict_to_disk[COURT] is a dictionary, where doc ID are keys, and values are the court of the case.
+# dict_to_disk[TAG] is a dictionary, where doc ID are keys, and values are whether the document
+# contains tags.
+# dict_to_disk[CONTENT_INDEXT] is a dictionary, where terms in content are keys,
+# and Node`s that point to the postings are stored as values in the dictionary.
+# The tuple in each posting for content represents (doc ID, term positional index table).
 def write_post_to_disk(dictionary, postings_file):
     dicts_to_disk = dict()
     with open(postings_file, mode="wb") as pf:

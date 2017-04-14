@@ -17,13 +17,18 @@ JURISDICTION = 'JURISDICTION'
 COURT = 'COURT'
 LANGUAGE = 'english'
 TAG = 'TAG'
-
 PHRASE = 'PHRASE'
 WORD = 'WORD'
 underscore = "_"
 space = " "
-courts_weight = {"SGHC": 0.008, "SGCA": 0.012, "SG": 0.006, "CA": 0.005}
 xml = ".xml"
+tf = 'tf'
+POSITION = 'position'
+
+synonyms_phrase_weight = 0.08
+synonyms_word_weight = 0.03
+courts_score = {"SGHC": 0.008, "SGCA": 0.012, "SG": 0.006, "CA": 0.005}
+tag_score = 0.01
 
 stemmer = PorterStemmer()
 stopwords = stopwords.words(LANGUAGE)
