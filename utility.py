@@ -22,7 +22,7 @@ PHRASE = 'PHRASE'
 WORD = 'WORD'
 underscore = "_"
 space = " "
-courts_weight = {"SGHC": 1.1, "SGCA": 1.2, "SG": 1.05, "CA": 1.05}
+courts_weight = {"SGHC": 0.008, "SGCA": 0.012, "SG": 0.006, "CA": 0.005}
 xml = ".xml"
 
 stemmer = PorterStemmer()
