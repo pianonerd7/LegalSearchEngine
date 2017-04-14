@@ -62,18 +62,18 @@ def update_score_by_fields(normalized_score, dictionary):
         if court == None:
             continue
         if court in courts_weight:
-            normalized_score[result] *= courts_weight[court]
+            normalized_score[result] += courts_weight[court]
         elif len(court) >= 2:
             prefix = court[:2]
             if prefix in courts_weight:
-                normalized_score[result] *= courts_weight[prefix]
+                normalized_score[result] += courts_weight[prefix]
             subfix = court[-2:]
             if subfix in courts_weight:
-                normalized_score[result] *= courts_weight[subfix]
+                normalized_score[result] += courts_weight[subfix]
         if result not in dictionary[TAG]:
             continue
         if dictionary[TAG][result]:
-            normalized_score[result] *= 1.2
+            normalized_score[result] += 0.01
 
 def get_synonyms_for_phrase(phrases):
     default_word_info = {'tf': 1, 'pos': [0]}
@@ -159,14 +159,13 @@ def get_query_result(query, dictionary, doc_length_table, postings_file_path,
 
 def update_score_by_position(score_dict, position_list_arr):
     for i in range(0, len(position_list_arr) - 1):
-        for j in range(1, len(position_list_arr)):
-            answer_10 = get_positional_intersect(position_list_arr[i], position_list_arr[j], 10)
-            for doc in answer_10:
-                if doc in score_dict:
-                    score_dict[doc] *= 1.5
+        for j in range(i + 1, len(position_list_arr)):
             answer_50 = get_positional_intersect(position_list_arr[i], position_list_arr[j], 50)
+            answer_10 = get_positional_intersect(position_list_arr[i], position_list_arr[j], 10)
             for doc in answer_50:
-                if doc in score_dict and doc not in answer_10:
+                if doc in score_dict and doc in answer_10:
+                    score_dict[doc] *= 1.5
+                elif doc in score_dict:
                     score_dict[doc] *= 1.2
 
 # Intersects and returns the score dictionaries.
@@ -230,7 +229,8 @@ def remove_unpositional_docs(score_dictionary, phrase, postings_cache):
             postings_cache[word2], pos_diff))
 
     intersected_list = intersect_lists(doc_id_lists)
-    position_list = list(intersect_score_dicts(doc_id_lists).items())
+    position_list = list(intersected_list.items())
+    position_list.sort(key=itemgetter(0))
 
     new_dict = dict()
     for doc_id in intersected_list:
@@ -260,6 +260,7 @@ def get_positional_intersect(postings1, postings2, pos_diff):
 
     while i < len(postings1) and j < len(postings2):
         if postings1[i][0] == postings2[j][0]:
+
             lst = []
             positions1 = postings1[i][1]
             positions2 = postings2[j][1]
