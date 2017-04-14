@@ -24,25 +24,27 @@ dictionary[TAG] = dict()
 def process_documents(file_path, dictionary_file, postings_file):
     print('building index...')
     all_files = [filename for filename in os.listdir(file_path) if filename != ".DS_Store"]
+    collection = []
+    for case in all_files:
+        collection.append(case[:-4])
+    collection.sort()
     doc_length_table = dict()
     start = datetime.datetime.now()
 
-    for case in all_files:
-        filename = case[:-4]
-        (content, court, tag) = parse_xml(file_path, case)
+    for filename in collection:
+        (content, court, tag) = parse_xml(file_path, filename)
         (doc_length, term_index_table) = process_content(content)
         update_dictionary(filename, term_index_table, court, tag)
         doc_length_table[filename] = doc_length
-        content.clear()
         term_index_table.clear()
-    write_to_disk(dictionary_file, postings_file, doc_length_table, len(all_files))
+    write_to_disk(dictionary_file, postings_file, doc_length_table, len(collection))
     end = datetime.datetime.now()
     print(str(end - start))
     print('...index is done building')
 
 # parse_xml reads the xml file and gets the useful tags
 def parse_xml(file_path, filename):
-    new_file_path = file_path + filename
+    new_file_path = file_path + str(filename) + xml
     content = court = ''
     tag = False
 
@@ -104,7 +106,6 @@ def update_dictionary(doc_ID, term_index_table, court, tag):
         postings_element = (doc_ID, term_index_table[term])
         dictionary[CONTENT_INDEX][term].append(postings_element)
 
-    # dictionary[JURISDICTION][doc_ID] = jurisdiction
     dictionary[COURT][doc_ID] = court
     dictionary[TAG][doc_ID] = tag
 

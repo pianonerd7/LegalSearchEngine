@@ -19,6 +19,7 @@ def query_from_file_to_array(query_file_path):
     phrases = [f.group(1) for f in re.finditer('"(.+?)"', line)]
 
     for phrase in phrases:
+        phrase = phrase.casefold()
         notstemmed_word_dict, word_dict = parse_phrase(phrase)
         notstemmed_query.append(notstemmed_word_dict)
         query.append(word_dict)

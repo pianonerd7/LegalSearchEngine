@@ -22,7 +22,8 @@ PHRASE = 'PHRASE'
 WORD = 'WORD'
 underscore = "_"
 space = " "
-courts_weight = {"SGHC": 1.3, "SGCA": 1.5, "SG": 1.2, "CA": 1.1}
+courts_weight = {"SGHC": 1.1, "SGCA": 1.2, "SG": 1.05, "CA": 1.05}
+xml = ".xml"
 
 stemmer = PorterStemmer()
 stopwords = stopwords.words(LANGUAGE)

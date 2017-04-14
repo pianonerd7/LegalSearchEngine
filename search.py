@@ -31,7 +31,7 @@ def process_queries(dictionary_file, postings_file_path, query_file, output_file
     (dictionary, doc_length_table) = read_dictionary_to_memory(dictionary_file)
     phrases, query, notstemmed_query = parse_query(query_file)
     result_round_1 = get_query_result(query, dictionary, doc_length_table,
-        postings_file_path, True)
+        postings_file_path, True, True)
     update_score_by_query_expansion(result_round_1, phrases, query, notstemmed_query, dictionary, doc_length_table, postings_file_path)
     normalized_score = get_normalized_score(result_round_1, doc_length_table)
     update_score_by_fields(normalized_score, dictionary)
@@ -41,16 +41,16 @@ def process_queries(dictionary_file, postings_file_path, query_file, output_file
 def update_score_by_query_expansion(result, phrases, query, notstemmed_query, dictionary, doc_length_table, postings_file_path):
     new_phrase_query = get_synonyms_for_phrase(phrases)
     for phrase in new_phrase_query[PHRASE]:
-        update_query_result_for_synonyms(result, phrase, 0.3, True, dictionary, doc_length_table, postings_file_path)
-    update_query_result_for_synonyms(result, new_phrase_query[WORD], 0.3, False, dictionary, doc_length_table, postings_file_path)
+        update_query_result_for_synonyms(result, phrase, 0.1, True, dictionary, doc_length_table, postings_file_path)
+    update_query_result_for_synonyms(result, new_phrase_query[WORD], 0.1, False, dictionary, doc_length_table, postings_file_path)
 
     new_word_query = get_synonyms_for_query(query, notstemmed_query)
     for phrase in new_word_query[PHRASE]:
-         update_query_result_for_synonyms(result, phrase, 0.1, True, dictionary, doc_length_table, postings_file_path)
-    update_query_result_for_synonyms(result, new_word_query[WORD], 0.1, False, dictionary, doc_length_table, postings_file_path)
+         update_query_result_for_synonyms(result, phrase, 0.05, True, dictionary, doc_length_table, postings_file_path)
+    update_query_result_for_synonyms(result, new_word_query[WORD], 0.05, False, dictionary, doc_length_table, postings_file_path)
 
 def update_query_result_for_synonyms(previous_result, synonyms, weight, remove_incomplete, dictionary, doc_length_table, postings_file_path):
-    synonyms_result = get_query_result([synonyms], dictionary, doc_length_table, postings_file_path, remove_incomplete, previous_result)
+    synonyms_result = get_query_result([synonyms], dictionary, doc_length_table, postings_file_path, remove_incomplete, False, previous_result)
     for result in synonyms_result:
         previous_result[result] += synonyms_result[result] * weight
 
@@ -59,6 +59,8 @@ def update_score_by_fields(normalized_score, dictionary):
         if result not in dictionary[COURT]:
             continue
         court = dictionary[COURT][result]
+        if court == None:
+            continue
         if court in courts_weight:
             normalized_score[result] *= courts_weight[court]
         elif len(court) >= 2:
@@ -134,36 +136,51 @@ def get_synonyms(word):
 # Calculates the results of each phrase in the passed query and intersects them to get the result
 # of the query.
 def get_query_result(query, dictionary, doc_length_table, postings_file_path,
-    remove_incomplete, result_round_1 = None):
-    score_dict_arr = []
+    remove_incomplete, check_position, result_round_1 = None):
+    score_dict = None
+    position_list_arr = []
     with open(postings_file_path, 'rb') as postings_file:
         for phrase in query:
-            score = calculate_cosine_score(dictionary, doc_length_table, postings_file,
+            (score, position_list) = calculate_cosine_score(dictionary, doc_length_table, postings_file,
                 phrase, remove_incomplete, CONTENT_INDEX, result_round_1)
-            score_dict_arr.append(score)
+            if score_dict is None:
+                score_dict = score
+            else:
+                score_dict = intersect_score_dicts([score_dict, score])
+            if check_position:
+                position_list_arr.append(position_list)
 
     #AND the phrases
-    score_dict = score_dict_arr[0]
     if len(query) > 1:
-        score_dict = intersect_score_dicts(score_dict_arr)
+        if check_position:
+            update_score_by_position(score_dict, position_list_arr)
 
     return score_dict
 
+def update_score_by_position(score_dict, position_list_arr):
+    for i in range(0, len(position_list_arr) - 1):
+        for j in range(1, len(position_list_arr)):
+            answer_10 = get_positional_intersect(position_list_arr[i], position_list_arr[j], 10)
+            for doc in answer_10:
+                if doc in score_dict:
+                    score_dict[doc] *= 1.5
+            answer_50 = get_positional_intersect(position_list_arr[i], position_list_arr[j], 50)
+            for doc in answer_50:
+                if doc in score_dict and doc not in answer_10:
+                    score_dict[doc] *= 1.2
+
 # Intersects and returns the score dictionaries.
 def intersect_score_dicts(score_dict_arr):
-    dict3 = dict()
-    for i in range(0, len(score_dict_arr) - 1):
+    if len(score_dict_arr) == 0:
+        return score_dict_arr
+    dict2 = score_dict_arr[0]
+    for i in range(1, len(score_dict_arr)):
         dict1 = score_dict_arr[i]
-        dict2 = score_dict_arr[i + 1]
+        for key, value in list(dict2.items()):
+            if key not in dict1.keys():
+                del dict2[key]
 
-        for key in (dict1.keys() & dict2.keys()):
-            for dic in [dict1, dict2]:
-                if key in dic:
-                    if key not in dict3.keys():
-                        dict3[key] = 0
-                    dict3[key] += dic[key]
-
-    return dict3
+    return dict2
 
 # Calculates the cosine score based on the algorithm described in lecture slides.
 def calculate_cosine_score(dictionary, doc_length_table, postings_file, phrase,
@@ -181,23 +198,25 @@ def calculate_cosine_score(dictionary, doc_length_table, postings_file, phrase,
         postings = find_posting_in_disk(dictionary, query_term, postings_file, tag)
         postings_cache[query_term] = postings
         update_score_dictionary(postings, score_dictionary, query_weight, result_round_1)
-        postings.clear()
 
+    position_list = dict()
     if remove_incomplete:
-        score_dictionary = remove_unpositional_docs(score_dictionary, phrase, postings_cache)
+        score_dictionary, position_list = remove_unpositional_docs(score_dictionary, phrase, postings_cache)
 
-    return score_dictionary
+    return score_dictionary, position_list
 
 # Gets the document IDs that satisfy the positional constraints and removes the rest from the
 # passed score_dictionary.
 def remove_unpositional_docs(score_dictionary, phrase, postings_cache):
     if len(phrase) < 2:
-        return score_dictionary
+        term = next(iter(phrase))
+        return score_dictionary, postings_cache[term]
 
     word_pos_arr = []
     for word in phrase.items():
         for position in word[1]["position"]:
             word_pos_arr.append((word[0], position))
+    word_pos_arr.sort(key=itemgetter(1))
 
     doc_id_lists = []
 
@@ -205,19 +224,19 @@ def remove_unpositional_docs(score_dictionary, phrase, postings_cache):
         word1 = word_pos_arr[0][0]
         word2 = word_pos_arr[i][0]
         if word1 not in postings_cache or word2 not in postings_cache:
-            break
+            doc_id_lists = []
         pos_diff = word_pos_arr[i][1] - word_pos_arr[0][1]
         doc_id_lists.append(get_positional_intersect(postings_cache[word1],
             postings_cache[word2], pos_diff))
 
     intersected_list = intersect_lists(doc_id_lists)
+    position_list = list(intersect_score_dicts(doc_id_lists).items())
 
     new_dict = dict()
     for doc_id in intersected_list:
         if doc_id in score_dictionary:
             new_dict[doc_id] = score_dictionary[doc_id]
-
-    return new_dict
+    return new_dict, position_list
 
 # Intersects and returns the passed array of lists.
 def intersect_lists(doc_id_lists):
@@ -233,7 +252,7 @@ def intersect_lists(doc_id_lists):
 # Returns the document IDs that from passed postings lists where the words are
 # within pos_diff positions of each other.
 def get_positional_intersect(postings1, postings2, pos_diff):
-    answer = []
+    answer = dict()
     #postings1
     i = 0
     #postings2
@@ -257,7 +276,10 @@ def get_positional_intersect(postings1, postings2, pos_diff):
 
                 for element in lst:
                     if abs(element - positions1[pp1]) <= pos_diff:
-                        answer.append(postings1[i][0])
+                        doc_ID = postings1[i][0]
+                        if doc_ID not in answer:
+                            answer[doc_ID] = []
+                        answer[doc_ID].append(positions1[pp1])
 
                 pp1 += 1
             i += 1
@@ -266,7 +288,6 @@ def get_positional_intersect(postings1, postings2, pos_diff):
             i += 1
         else:
             j += 1
-
     return answer
 
 # Calculates the ltc weight for the term in query.
