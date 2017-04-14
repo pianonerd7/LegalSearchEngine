@@ -1,9 +1,9 @@
 This is the README file for A0118888J-A0146123R-A0163945W's submission
-Email: A0118888J@u.nus.edu, E0010245@u.nus.edu, E0147987@u.nus.edu
+Email: A0118888@u.nus.edu, E0010245@u.nus.edu, E0147987@u.nus.edu
 
 == Python Version ==
 
-I'm using Python Version <3.6.0> for
+We're using Python Version <3.6.0> for
 this assignment.
 
 == General Notes about this assignment ==
@@ -15,7 +15,7 @@ content, court and tags field. Then we will process the content by generating
 the term positional index table and calculate the document length of the content. 
 We also index info in court field and whether the document contains tags.
 
-In addition, considering the lagre number of documents in corpus, we will 
+In addition, considering the large number of documents in corpus, we will 
 periodically write dictionaries and postings to disk, rather than keep them in memory
 throughout indexing. After we index all files, we will merge dictionaries 
 into one dictionary, postings into one posting and write them to the disk.
@@ -53,7 +53,7 @@ is more memory efficient.
 Allocation of work:
 A0163945W: Indexing
 A0118888J: tf-idf calculation with positional index and AND operator.
-A0146123R: Query expansion, update score by position and filed, clean-up and fix bugs.
+A0146123R: Query expansion, update score by position and field, clean-up and fix bugs.
 
 == Files included with this submission ==
 
@@ -105,3 +105,5 @@ We completed all the work and adhere to the policy stated above.
 == References ==
 
 Lecture notes
+https://docs.python.org/3/
+http://stackoverflow.com/
