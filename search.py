@@ -109,10 +109,10 @@ def get_normalized_score(score_dictionary, doc_length_table):
 def update_score_by_position(score_dict, position_list_arr):
     for i in range(0, len(position_list_arr) - 1):
         for j in range(i + 1, len(position_list_arr)):
-            answer_50 = get_positional_intersect(position_list_arr[i], position_list_arr[j], 50)
-            answer_10 = get_positional_intersect(position_list_arr[i], position_list_arr[j], 10)
-            for doc in answer_50:
-                if doc in score_dict and doc in answer_10:
+            answer_100 = get_positional_intersect(position_list_arr[i], position_list_arr[j], 100)
+            answer_20 = get_positional_intersect(position_list_arr[i], position_list_arr[j], 20)
+            for doc in answer_100:
+                if doc in score_dict and doc in answer_20:
                     score_dict[doc] *= 1.5
                 elif doc in score_dict:
                     score_dict[doc] *= 1.2
@@ -255,7 +255,7 @@ def remove_unpositional_docs(score_dictionary, phrase, postings_cache):
         word1 = word_pos_arr[0][0]
         word2 = word_pos_arr[i][0]
         if word1 not in postings_cache or word2 not in postings_cache:
-            doc_id_lists = []
+            return dict(), []
         pos_diff = word_pos_arr[i][1] - word_pos_arr[0][1]
         doc_id_lists.append(get_positional_intersect(postings_cache[word1],
             postings_cache[word2], pos_diff))

@@ -25,18 +25,32 @@ dictionary[TAG] = dict()
 # Builds index for all documents in file_path.
 def process_documents(file_path, dictionary_file, postings_file):
     print('building index...')
+    print('Please delete existing dictionary, postings and temporary files')
     start = datetime.datetime.now()
+    temp_postings_file = "temp_posting"
 
     collection = [int(filename[:-len(xml)]) for filename in os.listdir(file_path) if filename != ".DS_Store"]
     collection.sort()
     doc_length_table = dict()
+    i = 0
     for filename in collection:
         (content, court, tag) = parse_xml(file_path, filename)
         (doc_length, term_index_table) = process_content(content)
         update_dictionary(filename, term_index_table, court, tag)
         doc_length_table[filename] = doc_length
         term_index_table.clear()
-    write_to_disk(dictionary_file, postings_file, doc_length_table, len(collection))
+        i += 1
+        if i > 3500:
+            # The collection is too big that it cannot fit into memory.
+            # Thus, we will write perioridically write dict to disk,
+            # and clear some memory.
+            write_temp_dict_to_disk(dictionary_file, temp_postings_file)
+            dictionary[CONTENT_INDEX].clear()
+            i = 0
+    write_temp_dict_to_disk(dictionary_file, temp_postings_file)
+    dictionary[CONTENT_INDEX] = merge_dictionary(dictionary_file, postings_file, temp_postings_file)
+    dictionary[COLLECTION_SIZE] = len(collection)
+    write_dict_to_disk(dictionary, doc_length_table, dictionary_file)
     end = datetime.datetime.now()
     print(str(end - start))
     print('...index is done building')
@@ -134,38 +148,53 @@ def update_dictionary(doc_ID, term_index_table, court, tag):
     dictionary[COURT][doc_ID] = court
     dictionary[TAG][doc_ID] = tag
 
-def write_to_disk(dictionary_file, postings_file, doc_length_table, collection_length):
-    dict_to_disk = write_post_to_disk(dictionary, postings_file)
-    dict_to_disk[COLLECTION_SIZE] = collection_length
-    write_dict_to_disk(dict_to_disk, doc_length_table, dictionary_file)
+# Write the temp content dict to disk.
+def write_temp_dict_to_disk(dictionary_file, postings_file):
+    temp_dict_to_disk = write_content_post_to_disk(dictionary[CONTENT_INDEX], postings_file)
+    with open(dictionary_file, mode="a+b") as df:
+        pickle.dump(temp_dict_to_disk, df)
 
 # Writes postings to disk and gets dict_to_disk.
-# dict_to_disk has three keys: CONTENT_INDEX, COURT and TAG.
-# Values for those keys store information about those corresponding parts.
-# dict_to_disk[COURT] is a dictionary, where doc ID are keys, and values are the court of the case.
-# dict_to_disk[TAG] is a dictionary, where doc ID are keys, and values are whether the document
-# contains tags.
 # dict_to_disk[CONTENT_INDEXT] is a dictionary, where terms in content are keys,
 # and Node`s that point to the postings are stored as values in the dictionary.
 # The tuple in each posting for content represents (doc ID, term positional index table).
-def write_post_to_disk(dictionary, postings_file):
-    dicts_to_disk = dict()
-    with open(postings_file, mode="wb") as pf:
-        for tag in dictionary:
-            if tag == CONTENT_INDEX:
-                dict_to_disk = dict()
-                for key in dictionary[tag]:
-                    dict_to_disk[key] = Node(key, len(dictionary[tag][key]), pf.tell(), pf.write(pickle.dumps(dictionary[tag][key])))
-            else:
-                dict_to_disk = dictionary[tag]
-            dicts_to_disk[tag] = dict_to_disk
-    return dicts_to_disk
+def write_content_post_to_disk(content_dictionary, postings_file):
+    with open(postings_file, mode="a+b") as pf:
+        dict_to_disk = dict()
+        for key in content_dictionary:
+            dict_to_disk[key] = Node(key, len(content_dictionary[key]), pf.tell(), pf.write(pickle.dumps(content_dictionary[key])))
+    return dict_to_disk
 
 # Writes dictionary_file and doc_length_table to disk.
 def write_dict_to_disk(dict_to_disk, doc_length_table, dictionary_file):
     with open(dictionary_file, mode="wb") as df:
         data = [dict_to_disk, doc_length_table]
         pickle.dump(data, df)
+
+# Merge dictionaries.
+def merge_dictionary(dictionary_file, postings_file, temp_postings_file):
+    merged_dictionary = dict()
+    with open(dictionary_file, 'rb') as df:
+        while True:
+            try:
+                temp_dictionary = pickle.load(df)
+            except EOFError:
+                break
+            else:
+                for key, value in temp_dictionary.items():
+                    if key not in merged_dictionary:
+                        merged_dictionary[key] = []
+                    merged_dictionary[key].append(value)
+    with open(temp_postings_file, mode="rb") as tpf, open(postings_file, mode="wb") as pf:
+        for key, value in merged_dictionary.items():
+            postings = []
+            for node in value:
+                offset = node.get_pointer() - tpf.tell()
+                tpf.seek(offset, 1)
+                postings.extend(pickle.loads(tpf.read(node.length)))
+            merged_dictionary[key] = Node(key, len(merged_dictionary[key]), pf.tell(), pf.write(pickle.dumps(postings)))
+            postings.clear()
+    return merged_dictionary
 
 def usage():
     print ("usage: " + sys.argv[0] + " -i directory-of-documents -d dictionary-file -p postings-file")
